@@ -100,28 +100,121 @@ jobs:
           BINARY_CHANGES=$(git diff --numstat "${BASE_SHA}...${HEAD_SHA}" | grep -E '^-\s+-\s+' | awk '{print $3}' || true)
           echo "binary_changes=${BINARY_CHANGES:-None}" >> "$GITHUB_OUTPUT"
 
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Analyze composite action changes
+        id: composite
+        if: steps.diff.outputs.manifest_changes != 'None'
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          ACTION_DIFF=$(git diff "${BASE_SHA}...${HEAD_SHA}" -- 'action.yml' 'action.yaml' || true)
+
+          if [ -z "${ACTION_DIFF}" ]; then
+            echo "has_composite_findings=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_composite_findings=true" >> "$GITHUB_OUTPUT"
+
+          # Detect using: field changes (action type change)
+          USING_CHANGE=$(echo "${ACTION_DIFF}" | grep -E '^[+-][[:space:]]*using[[:space:]]*:' | grep -v '^[+-]{3}' || true)
+          echo "using_change=${USING_CHANGE:-None}" >> "$GITHUB_OUTPUT"
+
+          # Detect added uses: references (exclude diff headers and comments)
+          ADDED_USES=$(echo "${ACTION_DIFF}" | grep -E '^\+' | grep -v '^+++' | grep -v '^+[[:space:]]*#' | grep '[[:space:]]*uses[[:space:]]*:' | sed 's/^\+//' || true)
+          DELIMITER_AU="USES_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "added_uses<<${DELIMITER_AU}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${ADDED_USES:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_AU}" >> "$GITHUB_OUTPUT"
+
+          # Detect removed uses: references
+          REMOVED_USES=$(echo "${ACTION_DIFF}" | grep -E '^\-' | grep -v '^---' | grep -v '^\-[[:space:]]*#' | grep '[[:space:]]*uses[[:space:]]*:' | sed 's/^\-//' || true)
+          DELIMITER_RU="RUSES_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "removed_uses<<${DELIMITER_RU}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${REMOVED_USES:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_RU}" >> "$GITHUB_OUTPUT"
+
+          # Detect added run: steps
+          ADDED_RUNS=$(echo "${ACTION_DIFF}" | grep -E '^\+' | grep -v '^+++' | grep -v '^+[[:space:]]*#' | grep '[[:space:]]*run[[:space:]]*:' | sed 's/^\+//' || true)
+          DELIMITER_AR="RUNS_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "added_runs<<${DELIMITER_AR}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${ADDED_RUNS:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_AR}" >> "$GITHUB_OUTPUT"
+
+          # Detect unpinned uses: references (not using 40-char SHA)
+          UNPINNED=$(echo "${ACTION_DIFF}" | grep -E '^\+' | grep -v '^+++' | grep -v '^+[[:space:]]*#' | grep '[[:space:]]*uses[[:space:]]*:' | grep -v '@[0-9a-f]\{40\}' | sed 's/^\+//' || true)
+          DELIMITER_UP="UNPIN_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "unpinned_refs<<${DELIMITER_UP}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${UNPINNED:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_UP}" >> "$GITHUB_OUTPUT"
+
       - name: Post diff summary as PR comment
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
+          FILES_CHANGED: ${{ steps.diff.outputs.files_changed }}
+          LINES_ADDED: ${{ steps.diff.outputs.lines_added }}
+          LINES_REMOVED: ${{ steps.diff.outputs.lines_removed }}
+          MANIFEST_CHANGES: ${{ steps.diff.outputs.manifest_changes }}
+          SCRIPT_CHANGES: ${{ steps.diff.outputs.script_changes }}
+          BINARY_CHANGES: ${{ steps.diff.outputs.binary_changes }}
+          HAS_COMPOSITE: ${{ steps.composite.outputs.has_composite_findings }}
+          COMPOSITE_USING: ${{ steps.composite.outputs.using_change }}
+          COMPOSITE_ADDED_USES: ${{ steps.composite.outputs.added_uses }}
+          COMPOSITE_REMOVED_USES: ${{ steps.composite.outputs.removed_uses }}
+          COMPOSITE_ADDED_RUNS: ${{ steps.composite.outputs.added_runs }}
+          COMPOSITE_UNPINNED: ${{ steps.composite.outputs.unpinned_refs }}
         with:
           script: |
-            const prNumber = ${{ needs.find-pr.outputs.pr_number }};
-            const body = `## Security Diff Summary
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            let body = `## Security Diff Summary
 
             | Metric | Count |
             |--------|-------|
-            | Files changed | ${{ steps.diff.outputs.files_changed }} |
-            | Lines added | ${{ steps.diff.outputs.lines_added }} |
-            | Lines removed | ${{ steps.diff.outputs.lines_removed }} |
+            | Files changed | ${process.env.FILES_CHANGED} |
+            | Lines added | ${process.env.LINES_ADDED} |
+            | Lines removed | ${process.env.LINES_REMOVED} |
 
             ### Action Manifest Changes
-            \`${{ steps.diff.outputs.manifest_changes }}\`
+            \`${process.env.MANIFEST_CHANGES}\`
 
             ### Script Changes
-            \`${{ steps.diff.outputs.script_changes }}\`
+            \`${process.env.SCRIPT_CHANGES}\`
 
             ### Binary Files
-            \`${{ steps.diff.outputs.binary_changes }}\`
+            \`${process.env.BINARY_CHANGES}\`
             `;
+
+            if (process.env.HAS_COMPOSITE === 'true') {
+              body += `
+            ### Composite Action Analysis
+
+            **Action type (\`using:\`) change:** \`${process.env.COMPOSITE_USING}\`
+
+            **Added \`uses:\` references:**
+            \`\`\`
+            ${process.env.COMPOSITE_ADDED_USES}
+            \`\`\`
+
+            **Removed \`uses:\` references:**
+            \`\`\`
+            ${process.env.COMPOSITE_REMOVED_USES}
+            \`\`\`
+
+            **Added \`run:\` steps:**
+            \`\`\`
+            ${process.env.COMPOSITE_ADDED_RUNS}
+            \`\`\`
+
+            **Unpinned references (not SHA-pinned):**
+            \`\`\`
+            ${process.env.COMPOSITE_UNPINNED}
+            \`\`\`
+              `;
+            }
 
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
