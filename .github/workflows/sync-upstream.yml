@@ -292,6 +292,13 @@ jobs:
           - [ ] Check for obfuscated or minified code changes
           - [ ] Run security scan on changed files
           - [ ] Verify no secrets or credentials exposed
+
+          #### Composite Action Checks (if applicable)
+          - [ ] Verify `uses:` references have not changed to untrusted actions
+          - [ ] Verify all `uses:` references are SHA-pinned (not tag-pinned)
+          - [ ] Check for new `run:` steps that execute shell commands
+          - [ ] Verify `using:` field has not changed (e.g., node20 to composite)
+          - [ ] Check for references to actions not forked into the org
           PR_BODY
 
           sed -i 's/^          //' /tmp/pr_body.md
