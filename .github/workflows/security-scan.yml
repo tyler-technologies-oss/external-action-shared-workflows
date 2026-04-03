@@ -100,6 +100,57 @@ jobs:
           BINARY_CHANGES=$(git diff --numstat "${BASE_SHA}...${HEAD_SHA}" | grep -E '^-\s+-\s+' | awk '{print $3}' || true)
           echo "binary_changes=${BINARY_CHANGES:-None}" >> "$GITHUB_OUTPUT"
 
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Analyze composite action changes
+        id: composite
+        if: steps.diff.outputs.manifest_changes != 'None'
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          ACTION_DIFF=$(git diff "${BASE_SHA}...${HEAD_SHA}" -- 'action.yml' 'action.yaml' || true)
+
+          if [ -z "${ACTION_DIFF}" ]; then
+            echo "has_composite_findings=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_composite_findings=true" >> "$GITHUB_OUTPUT"
+
+          # Detect using: field changes (action type change)
+          USING_CHANGE=$(echo "${ACTION_DIFF}" | grep -E '^[+-]\s*using\s*:' | grep -v '^[+-]{3}' || true)
+          echo "using_change=${USING_CHANGE:-None}" >> "$GITHUB_OUTPUT"
+
+          # Detect added uses: references
+          ADDED_USES=$(echo "${ACTION_DIFF}" | grep -E '^\+.*uses\s*:' | grep -v '^+++' | sed 's/^\+//' || true)
+          DELIMITER_AU="USES_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "added_uses<<${DELIMITER_AU}" >> "$GITHUB_OUTPUT"
+          echo "${ADDED_USES:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_AU}" >> "$GITHUB_OUTPUT"
+
+          # Detect removed uses: references
+          REMOVED_USES=$(echo "${ACTION_DIFF}" | grep -E '^\-.*uses\s*:' | grep -v '^---' | sed 's/^\-//' || true)
+          DELIMITER_RU="RUSES_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "removed_uses<<${DELIMITER_RU}" >> "$GITHUB_OUTPUT"
+          echo "${REMOVED_USES:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_RU}" >> "$GITHUB_OUTPUT"
+
+          # Detect added run: steps
+          ADDED_RUNS=$(echo "${ACTION_DIFF}" | grep -E '^\+.*run\s*:' | grep -v '^+++' | sed 's/^\+//' || true)
+          DELIMITER_AR="RUNS_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "added_runs<<${DELIMITER_AR}" >> "$GITHUB_OUTPUT"
+          echo "${ADDED_RUNS:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_AR}" >> "$GITHUB_OUTPUT"
+
+          # Detect unpinned uses: references (not using 40-char SHA)
+          UNPINNED=$(echo "${ACTION_DIFF}" | grep -E '^\+.*uses\s*:' | grep -v '^+++' | grep -v '@[0-9a-f]\{40\}' | sed 's/^\+//' || true)
+          DELIMITER_UP="UNPIN_$(head -c 8 /dev/urandom | xxd -p)"
+          echo "unpinned_refs<<${DELIMITER_UP}" >> "$GITHUB_OUTPUT"
+          echo "${UNPINNED:-None}" >> "$GITHUB_OUTPUT"
+          echo "${DELIMITER_UP}" >> "$GITHUB_OUTPUT"
+
       - name: Post diff summary as PR comment
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
@@ -121,6 +172,31 @@ jobs:
 
             ### Binary Files
             \`${{ steps.diff.outputs.binary_changes }}\`
+            ${{ steps.composite.outputs.has_composite_findings == 'true' && format('
+
+            ### Composite Action Analysis
+
+            **Action type (`using:`) change:** `{0}`
+
+            **Added `uses:` references:**
+            ```
+            {1}
+            ```
+
+            **Removed `uses:` references:**
+            ```
+            {2}
+            ```
+
+            **Added `run:` steps:**
+            ```
+            {3}
+            ```
+
+            **Unpinned references (not SHA-pinned):**
+            ```
+            {4}
+            ```', steps.composite.outputs.using_change, steps.composite.outputs.added_uses, steps.composite.outputs.removed_uses, steps.composite.outputs.added_runs, steps.composite.outputs.unpinned_refs) || '' }}
             `;
 
             const comments = await github.rest.issues.listComments({
