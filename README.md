@@ -199,8 +199,3 @@ GitHub Actions rejects workflows when both the caller and the reusable workflow 
 ### Reusable workflow job names are prefixed
 
 When called from a caller, job names are prefixed with the caller's job name. For example, if the caller job is named `scan` and the reusable workflow has a job `dependency-review`, the check name becomes `scan / dependency-review`. Branch protection rules must use the prefixed names.
-
-## Requirements
-
-- This repo must be **public** for cross-repo `workflow_call` to work
-- Caller workflows must specify appropriate `permissions` at the workflow top level (not inside jobs) -- `GITHUB_TOKEN` is automatically available to reusable workflows via the caller's permissions block
