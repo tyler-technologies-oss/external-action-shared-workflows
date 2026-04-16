@@ -1,4 +1,4 @@
-# Fork Action Sync Templates
+# External Action Shared Workflows
 
 Reusable GitHub Actions workflows for managing forked third-party GitHub Actions with automated upstream sync, tag monitoring, and security scanning.
 
@@ -67,11 +67,16 @@ Monitors upstream tags for new releases, mutations (supply chain risk), and dele
 
 Runs security analysis on sync PRs, triggered via `workflow_run` after Sync Upstream completes.
 
-**No inputs required** -- the pull request context passes through from the caller.
+**Inputs:**
+
+| Input | Type | Required | Description |
+|-------|------|----------|-------------|
+| `default_branch` | string | yes | Default branch of the fork |
 
 **What it does:**
 - Dependency review (fails on high severity)
-- CodeQL analysis (JavaScript/TypeScript repos only)
+- CodeQL analysis (JavaScript/TypeScript repos only; informational, excluded from aggregate status)
+- Composite action analysis -- detects changes to `action.yml` refs, `using` field modifications, unpinned action references, and modified `run` steps; creates security alert issues for significant findings
 - Diff summary with risk assessment posted as PR comment
 
 ## Usage
@@ -91,9 +96,16 @@ on:
         required: false
         type: boolean
         default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 concurrency:
   group: sync-upstream
   cancel-in-progress: false
+
 jobs:
   sync:
     uses: tyler-technologies-oss/external-action-shared-workflows/.github/workflows/sync-upstream.yml@v1
@@ -101,12 +113,7 @@ jobs:
       upstream_owner: original-owner
       upstream_repo: original-repo
       default_branch: main
-      force: ${{ inputs.force || false }}
-    secrets: inherit
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      force: ${{ inputs.force == true }}
 ```
 
 **sync-tags.yml** (in your fork):
@@ -116,19 +123,21 @@ on:
   schedule:
     - cron: '0 6 * * 3'
   workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
 concurrency:
   group: sync-tags
   cancel-in-progress: false
+
 jobs:
   check-tags:
     uses: tyler-technologies-oss/external-action-shared-workflows/.github/workflows/sync-tags.yml@v1
     with:
       upstream_owner: original-owner
       upstream_repo: original-repo
-    secrets: inherit
-    permissions:
-      contents: read
-      issues: write
 ```
 
 **security-scan.yml** (in your fork):
@@ -138,22 +147,25 @@ on:
   workflow_run:
     workflows: ["Sync Upstream"]
     types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+  checks: write
+  issues: write
+  security-events: write
+
 concurrency:
   group: security-scan
   cancel-in-progress: false
+
 jobs:
   scan:
     if: github.event.workflow_run.conclusion == 'success'
     uses: tyler-technologies-oss/external-action-shared-workflows/.github/workflows/security-scan.yml@v1
     with:
       default_branch: main
-    secrets: inherit
-    permissions:
-      contents: read
-      pull-requests: write
-      statuses: write
-      checks: write
-      security-events: write
 ```
 
 ## Versioning
@@ -176,9 +188,9 @@ git push origin v1.1.0 && git push origin v1 --force
 
 ## Known Limitations
 
-### CodeQL is limited to JavaScript/TypeScript
+### CodeQL is limited to JavaScript/TypeScript forks
 
-CodeQL analysis only runs on JavaScript and TypeScript codebases. Actions written in other languages (Go, Bash, Docker) still receive dependency review and diff summary checks, but no static analysis. CodeQL results are informational only and excluded from the aggregate security-scan status.
+CodeQL analysis in the security scan only runs on forked actions that contain JavaScript or TypeScript code. Actions written in other languages (Go, Bash, Docker) still receive dependency review, composite action analysis, and diff summary checks, but no static analysis. CodeQL results are informational only and excluded from the aggregate security-scan status.
 
 ### Concurrency blocks must be in callers only
 
@@ -190,6 +202,5 @@ When called from a caller, job names are prefixed with the caller's job name. Fo
 
 ## Requirements
 
-- The templates repo must be **public** for cross-repo `workflow_call` to work
-- Caller workflows must include `secrets: inherit` to pass `GITHUB_TOKEN`
-- Caller workflows must specify appropriate `permissions` at the job level
+- This repo must be **public** for cross-repo `workflow_call` to work
+- Caller workflows must specify appropriate `permissions` at the workflow top level (not inside jobs) -- `GITHUB_TOKEN` is automatically available to reusable workflows via the caller's permissions block
