@@ -18,7 +18,7 @@ jobs:
       has_pr: ${{ steps.find.outputs.has_pr }}
     steps:
       - name: Checkout shared-workflows scripts
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: tyler-technologies-oss/external-action-shared-workflows
           ref: ${{ github.job_workflow_sha }}
@@ -42,12 +42,12 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout upstream-tracking
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: upstream-tracking
 
       - name: Dependency review
-        uses: actions/dependency-review-action@4901385134134e04cec5fbe5ddfe3b2c5bd5d976 # v4
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
           base-ref: refs/heads/${{ inputs.default_branch }}
           head-ref: refs/heads/upstream-tracking
@@ -65,12 +65,12 @@ jobs:
       issues: write
     steps:
       - name: Checkout fork
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
 
       - name: Checkout shared-workflows scripts
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: tyler-technologies-oss/external-action-shared-workflows
           ref: ${{ github.job_workflow_sha }}
@@ -146,7 +146,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout upstream-tracking
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: upstream-tracking
 
@@ -185,7 +185,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Checkout shared-workflows scripts
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: tyler-technologies-oss/external-action-shared-workflows
           ref: ${{ github.job_workflow_sha }}
