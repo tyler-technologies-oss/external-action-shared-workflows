@@ -36,13 +36,13 @@ jobs:
       has_security_changes: ${{ steps.security.outputs.has_security_changes }}
     steps:
       - name: Checkout fork
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           ref: upstream-tracking
 
       - name: Checkout shared-workflows scripts
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: tyler-technologies-oss/external-action-shared-workflows
           ref: ${{ github.job_workflow_sha }}
