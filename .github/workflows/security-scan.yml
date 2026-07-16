@@ -7,6 +7,38 @@ on:
         description: 'Default branch of the fork'
         required: true
         type: string
+      enable_ai_review:
+        description: 'Run the AI supply-chain code review on the sync PR'
+        required: false
+        default: 'true'
+        type: string
+      ai_review_scope:
+        description: 'Review scope passed to the ai-review action (default: supplychain)'
+        required: false
+        default: 'supplychain'
+        type: string
+      ai_model_id:
+        description: 'Model ID for the AI review (Bedrock or Anthropic format). Empty uses the action default.'
+        required: false
+        default: ''
+        type: string
+      ai_supplychain_model_id:
+        description: 'Optional stronger model for the supplychain review only (e.g. a Sonnet-class ID). Empty uses the same model as other types.'
+        required: false
+        default: ''
+        type: string
+      ai_aws_role_arn:
+        description: 'IAM role ARN for Bedrock via OIDC. Provide this OR a BEDROCK_API_KEY/ANTHROPIC_API_KEY secret.'
+        required: false
+        default: ''
+        type: string
+    secrets:
+      BEDROCK_API_KEY:
+        description: 'Amazon Bedrock API key (bearer token). Alternative to ai_aws_role_arn OIDC.'
+        required: false
+      ANTHROPIC_API_KEY:
+        description: 'Anthropic API key for direct API access.'
+        required: false
 
 jobs:
   find-pr:
@@ -176,7 +208,7 @@ jobs:
         continue-on-error: true
 
   report-status:
-    needs: [find-pr, dependency-review, diff-summary, codeql]
+    needs: [find-pr, dependency-review, diff-summary, codeql, ai-review]
     if: always() && needs.find-pr.outputs.has_pr == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -201,4 +233,57 @@ jobs:
           DEP_REVIEW_RESULT: ${{ needs.dependency-review.result }}
           DIFF_SUMMARY_RESULT: ${{ needs.diff-summary.result }}
           CODEQL_RESULT: ${{ needs.codeql.result }}
+          AI_REVIEW_RESULT: ${{ needs.ai-review.result }}
         run: bash .shared-workflows/scripts/security-scan/report-scan-statuses.sh
+
+  ai-review:
+    needs: find-pr
+    if: needs.find-pr.outputs.has_pr == 'true' && inputs.enable_ai_review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkout shared-workflows action
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: tyler-technologies-oss/external-action-shared-workflows
+          ref: ${{ github.job_workflow_sha }}
+          sparse-checkout: |
+            .github/actions/ai-review
+            scripts/ai-review
+          path: .shared-workflows
+
+      - name: Determine auth presence
+        id: authcheck
+        env:
+          B: ${{ secrets.BEDROCK_API_KEY }}
+          A: ${{ secrets.ANTHROPIC_API_KEY }}
+          R: ${{ inputs.ai_aws_role_arn }}
+        run: |
+          if [ -n "$B" ] || [ -n "$A" ] || [ -n "$R" ]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Bedrock/Anthropic auth configured — skipping AI review."
+          fi
+
+      - name: AI code review
+        if: steps.authcheck.outputs.have == 'true'
+        uses: ./.shared-workflows/.github/actions/ai-review
+        with:
+          PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
+          REVIEW_SCOPE: ${{ inputs.ai_review_scope }}
+          AWS_ROLE_ARN: ${{ inputs.ai_aws_role_arn }}
+          BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MODEL_ID: ${{ inputs.ai_model_id }}
+          SUPPLYCHAIN_MODEL_ID: ${{ inputs.ai_supplychain_model_id }}
+          GITHUB_TOKEN: ${{ github.token }}

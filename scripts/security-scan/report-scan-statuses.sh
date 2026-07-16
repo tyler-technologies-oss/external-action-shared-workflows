@@ -57,7 +57,13 @@ post_check "security-scan/codeql" \
   "$(map_check "${CODEQL_RESULT}")" \
   "CodeQL analysis: ${CODEQL_RESULT}"
 
-# CodeQL is informational -- findings appear in Code Scanning tab, not in aggregate
+post_check "security-scan/ai-review" \
+  "$(map_check "${AI_REVIEW_RESULT}")" \
+  "AI code review: ${AI_REVIEW_RESULT}"
+
+# CodeQL and AI review are informational -- CodeQL findings appear in the Code
+# Scanning tab and AI review posts inline/summary PR comments; neither gates the
+# aggregate, so model variance or an advisory review never blocks a sync.
 if [ "${DEP_REVIEW_RESULT}" = "failure" ] || \
    [ "${DIFF_SUMMARY_RESULT}" = "failure" ]; then
   AGGREGATE="failure"
