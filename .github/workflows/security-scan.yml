@@ -47,8 +47,8 @@ jobs:
       - name: Checkout shared-workflows scripts
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          repository: tyler-technologies-oss/external-action-shared-workflows
-          ref: ${{ github.job_workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: scripts
           path: .shared-workflows
 
@@ -99,8 +99,8 @@ jobs:
       - name: Checkout shared-workflows scripts
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          repository: tyler-technologies-oss/external-action-shared-workflows
-          ref: ${{ github.job_workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: scripts
           path: .shared-workflows
 
@@ -218,8 +218,8 @@ jobs:
       - name: Checkout shared-workflows scripts
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          repository: tyler-technologies-oss/external-action-shared-workflows
-          ref: ${{ github.job_workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: scripts
           path: .shared-workflows
 
@@ -240,8 +240,8 @@ jobs:
       - name: Checkout shared-workflows scripts
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          repository: tyler-technologies-oss/external-action-shared-workflows
-          ref: ${{ github.job_workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: scripts
           path: .shared-workflows
 
@@ -275,8 +275,8 @@ jobs:
       - name: Checkout shared-workflows action
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          repository: tyler-technologies-oss/external-action-shared-workflows
-          ref: ${{ github.job_workflow_sha }}
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           sparse-checkout: |
             .github/actions/ai-review
             scripts/ai-review
