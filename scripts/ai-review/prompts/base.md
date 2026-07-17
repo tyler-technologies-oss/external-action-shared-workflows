@@ -42,49 +42,46 @@ Work through EVERY file section you loaded in Step 1:
 Work through ALL file sections — do not skip any.
 Review workflow files, actions, scripts, and source equally — do not skip any.
 
-## Step 3: Post inline comments on specific issues
+## Step 3: Post an inline comment for EVERY finding (this is the primary output)
 
-Report by severity using an asymmetric threshold: If a change matches a CRITICAL pattern, always report it, even if unsure — begin the comment with 'Possible:' and state what a human should verify. For HIGH, report when the pattern is clearly present in the diff. For MEDIUM and LOW, comment only when confident; when unsure, omit.
+Inline comments are the main deliverable. Post a SEPARATE inline comment for EACH issue you find,
+anchored to its exact line. Do NOT collapse findings into the summary — the summary (Step 4) is
+only a roll-up of what you posted here. If the SAME problem appears on several annotated lines
+(e.g. an input interpolated in multiple run lines), comment on EACH occurrence.
 
-Never quote or restate a secret-looking value in a comment, even to warn about it — describe its location instead.
+Decide what counts as a finding using an asymmetric threshold: if a change matches a CRITICAL
+pattern, report it even if unsure — begin the comment body with "Possible:" and say what a human
+should verify. For HIGH, report it whenever the pattern is clearly present. For MEDIUM and LOW,
+report only when confident; when unsure, omit. But once something IS a finding, you MUST post it
+inline — never silently drop a CRITICAL or HIGH finding.
 
-For EACH issue you find, post an inline comment using:
+Never quote or restate a secret-looking value in a comment — describe its location instead.
 
-mcp__github_inline_comment__create_inline_comment with these parameters:
+Post each finding with mcp__github_inline_comment__create_inline_comment:
 - file_path: path to the file (relative to repo root)
-- line: the FILE line number to comment on (REQUIRED — see constraint below)
-- body: clear description of the issue and how to fix it
+- line: the FILE line number (read it from the "L N" prefix — see below)
+- body: what the issue is and how to fix it; wrap every code fragment in backticks
 - confirmed: true (REQUIRED — always set this to true)
 
-For multi-line comments only, also include:
-- startLine: first line of the range (must be less than or equal to line)
+For a multi-line range, also pass startLine (must be <= line). DO NOT use start_line or end_line —
+those parameter names fail.
 
-DO NOT use start_line or end_line — those parameter names are wrong and will fail.
-Use "line" for single-line comments and "startLine" + "line" for multi-line.
-
-INLINE COMMENT LINE NUMBER CONSTRAINT:
-
-Every "+ " (added) and " " (context) line in the diff is prefixed with "L N" where N is
-the exact file line number to use for the "line" parameter. Read it directly — no arithmetic needed.
+FINDING THE LINE NUMBER: every added ("+") and context (" ") line in the pre-fetched diff is
+prefixed "L N", where N is exactly the value to pass as "line" — use it directly, no arithmetic.
 
 Example diff output:
-  L    9 +    - uses: actions/checkout@v4
-  L   10 +      run: echo "${{ github.event.pull_request.title }}"
-         -      run: echo "old"
-  L   12 +    - run: curl https://example.sh | bash
+  L   25 +        if [ "$FORMAT" = "json" ]; then
+  L   26 +          echo "{\"greeting\": \"${{ inputs.greeting }}\"}"
+         -        old line
+  L   28 +          echo "[$(date)] ${{ inputs.greeting }}"
 
-To comment on the untrusted-interpolation run line: line=10
-To comment on the download-then-execute line: line=12
+To comment on the interpolation on line 26: line=26. It recurs on line 28: post another comment
+with line=28.
 
-The numbers shown by the Read tool at the far left (before "L") are DOCUMENT line numbers
-and must NEVER be used as the "line" parameter.
-
-ALSO: When you Read a full source file for additional context, those line numbers are
-NOT valid for inline comments unless the L N annotation in the diff confirms the same line.
-If you cannot find an L N annotation for the issue location, include it in the summary instead.
-
-BEFORE posting any inline comment, verify: does the exact line number appear as "L  N" in
-the diff section for that file? If not, skip the inline comment and put it in the summary.
+The far-left numbers shown by the Read tool are DOCUMENT positions, NOT file lines — never use
+those as "line". Only the "L N" values from the diff are valid. In the rare case a finding's line
+has no "L N" annotation, include it in the summary instead — but that is the exception, not the
+default. Every finding that HAS an "L N" line MUST be an inline comment.
 
 ## Step 4: Post a summary comment
 
