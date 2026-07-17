@@ -126,7 +126,7 @@ jobs:
             steps.composite.outputs.unpinned_refs != 'None' ||
             steps.composite.outputs.using_change != 'None'
           )
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
           CHANGED_REFS: ${{ steps.composite.outputs.changed_refs }}
@@ -141,7 +141,7 @@ jobs:
             await fn({ github, context });
 
       - name: Post diff summary as PR comment
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
           FILES_CHANGED: ${{ steps.diff.outputs.files_changed }}
@@ -182,8 +182,19 @@ jobs:
         id: sha
         run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Detect JavaScript/TypeScript source
+        id: detect
+        run: |
+          if git ls-files '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx' | grep -q .; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No JavaScript/TypeScript source found — skipping CodeQL analysis (this fork has no JS/TS to scan)."
+          fi
+
       - name: Initialize CodeQL
         id: codeql-init
+        if: steps.detect.outputs.has == 'true'
         uses: github/codeql-action/init@bb471cdcf4dda2c934c5b656f554d43c1434ed13 # v4
         with:
           languages: javascript-typescript

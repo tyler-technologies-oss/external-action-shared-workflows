@@ -31,7 +31,7 @@ inputs:
       Optional stronger model for the security-critical supplychain review only. Must match the
       active auth mode's format (Bedrock us.anthropic.* or Anthropic claude-*). If empty, the
       supplychain review uses the same resolved model as every other review type.
-      Recommended: a Sonnet-class model, e.g. us.anthropic.claude-sonnet-4-5-20250929-v1:0
+      Recommended: a strong serverless model, e.g. us.anthropic.claude-sonnet-4-6
     required: false
     default: ""
   GITHUB_TOKEN:
@@ -155,12 +155,12 @@ runs:
     # ================================
     # ===== Supply-Chain Review  =====
     # ================================
-    # Pinned to v1.0.89 — v1.0.90 breaks Bedrock SigV4 auth.
-    # See: https://github.com/anthropics/claude-code-action/issues/1193
-    # Remove pin when upstream fix is released.
+    # anthropics/claude-code-action is SHA-pinned per repo convention. The v1.0.90
+    # Bedrock SigV4 regression (issue #1193) is fixed upstream, and this action uses
+    # the bearer-token path (AWS_BEARER_TOKEN_BEDROCK) regardless.
     - name: Supply-Chain Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.supplychain_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -177,7 +177,7 @@ runs:
     # ================================
     - name: Bash Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.bash_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -194,7 +194,7 @@ runs:
     # ================================
     - name: JavaScript Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.javascript_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -211,7 +211,7 @@ runs:
     # ================================
     - name: Docker Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.docker_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -228,7 +228,7 @@ runs:
     # ================================
     - name: Python Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.python_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -245,7 +245,7 @@ runs:
     # ================================
     - name: Go Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.go_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -262,7 +262,7 @@ runs:
     # ================================
     - name: PowerShell Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.powershell_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
@@ -279,7 +279,7 @@ runs:
     # ================================
     - name: General Review
       if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.general_enabled == 'true'
-      uses: anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
       env:
         AWS_REGION: ${{ inputs.AWS_REGION }}
       with:
