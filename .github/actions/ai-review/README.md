@@ -43,21 +43,13 @@ The action runs entirely from inputs — the calling job checks out the fork, ch
 
 You must provide **exactly one** authentication method. Providing zero or more than one is a validation error.
 
-### Option 1: Bedrock via OIDC Role (`AWS_ROLE_ARN`)
+OIDC role-assumption is intentionally **not** supported: it would force every consumer caller to grant `id-token: write`. Both supported methods are static credentials passed as secrets, so no consumer caller needs `id-token` permission.
 
-Assume an IAM role via GitHub's OIDC provider. Most secure — no long-lived credentials stored. Requires an IAM role trusting GitHub OIDC with `bedrock:InvokeModel` permission, and `id-token: write` on the calling job. The action's OIDC credential step is `aws-actions/configure-aws-credentials` (SHA-pinned).
+### Option 1: Bedrock API Key (`BEDROCK_API_KEY`)
 
-```yaml
-with:
-  AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/my-bedrock-role"
-  AWS_REGION: "us-east-1"
-```
+A Bedrock long-term API key (bearer token; generated in the Bedrock console under **API keys**). Pass as a secret. The action exports it as `AWS_BEARER_TOKEN_BEDROCK` for Claude Code. `AWS_REGION` (default `us-east-1`) selects the Bedrock endpoint region.
 
-### Option 2: Bedrock API Key (`BEDROCK_API_KEY`)
-
-A Bedrock long-term API key (bearer token). Simpler than OIDC — no IAM trust policy required — at the cost of a long-lived credential. Pass as a secret.
-
-### Option 3: Anthropic API Key (`ANTHROPIC_API_KEY`)
+### Option 2: Anthropic API Key (`ANTHROPIC_API_KEY`)
 
 The Anthropic API directly. When this mode is used the action auto-converts the Bedrock default model ID to the Anthropic format (e.g. `us.anthropic.claude-haiku-4-5-20251001-v1:0` → `claude-haiku-4-5-20251001`); override with `MODEL_ID`.
 
@@ -104,9 +96,8 @@ The `supplychain` reviewer specifically flags:
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `PR_NUMBER` | **Yes** | — | PR number to review. Supplied by the security scan that discovers the sync PR (no `pull_request` event context). |
-| `AWS_ROLE_ARN` | One of three auth inputs | `""` | IAM role ARN for Bedrock via OIDC. |
-| `BEDROCK_API_KEY` | One of three auth inputs | `""` | Bedrock long-term API key (bearer token). |
-| `ANTHROPIC_API_KEY` | One of three auth inputs | `""` | Anthropic API key for direct API access. |
+| `BEDROCK_API_KEY` | One of two auth inputs | `""` | Bedrock long-term API key (bearer token). |
+| `ANTHROPIC_API_KEY` | One of two auth inputs | `""` | Anthropic API key for direct API access. |
 | `AWS_REGION` | No | `us-east-1` | AWS region for the Bedrock endpoint. |
 | `MODEL_ID` | No | `""` | Model ID (Bedrock or Anthropic format). Falls back to `BEDROCK_MODEL_ID`. |
 | `BEDROCK_MODEL_ID` | No | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Legacy model input. Prefer `MODEL_ID`. |
@@ -130,18 +121,16 @@ The reusable `security-scan.yml` workflow includes an `ai-review` job that check
         with:
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
           REVIEW_SCOPE: ${{ inputs.ai_review_scope }}
-          AWS_ROLE_ARN: ${{ inputs.ai_aws_role_arn }}
           BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MODEL_ID: ${{ inputs.ai_model_id }}
           GITHUB_TOKEN: ${{ github.token }}
 ```
 
-The calling job must have these permissions:
+The calling job needs these permissions (no `id-token` — OIDC is not used):
 
 ```yaml
 permissions:
-  id-token: write       # required for Bedrock OIDC auth
   contents: read
   pull-requests: write
   issues: write
@@ -149,7 +138,7 @@ permissions:
 
 The `security-scan.yml` `workflow_call` interface exposes:
 
-- Inputs: `enable_ai_review` (default `'true'`), `ai_review_scope` (default `'supplychain'`), `ai_model_id` (default `''`), `ai_aws_role_arn` (default `''`).
+- Inputs: `enable_ai_review` (default `'true'`), `ai_review_scope` (default `'supplychain'`), `ai_model_id` (default `''`), `ai_supplychain_model_id` (default `''`).
 - Secrets (both optional): `BEDROCK_API_KEY`, `ANTHROPIC_API_KEY`.
 
 If no auth is configured, the `ai-review` job emits a notice and skips — the scan does not fail.
@@ -160,7 +149,6 @@ If no auth is configured, the `ai-review` job emits a notice and skips — the s
 
 Every third-party action used by this composite is pinned to a full commit SHA:
 
-- `aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4`
 - `anthropics/claude-code-action@6e2bd52842c65e914eba5c8badd17560bd26b5de # v1.0.89`
 
 `claude-code-action` is pinned to `v1.0.89` because `v1.0.90` breaks Bedrock SigV4 auth (see anthropics/claude-code-action#1193).
@@ -176,7 +164,7 @@ Set `enable_ai_review: 'false'` on the `security-scan.yml` call, or `ENABLE_REVI
 ## Troubleshooting
 
 - **No AI review ran:** the `ai-review` job skips when no Bedrock/Anthropic auth is configured — check the `authcheck` step's notice.
-- **`No authentication method provided` / `Multiple authentication methods provided`:** provide exactly one of `AWS_ROLE_ARN`, `BEDROCK_API_KEY`, `ANTHROPIC_API_KEY`.
+- **`No authentication method provided` / `Multiple authentication methods provided`:** provide exactly one of `BEDROCK_API_KEY` or `ANTHROPIC_API_KEY`.
 - **Inline comments missing or in the summary instead:** only lines present in the PR diff range can receive inline comments; anything else is reported in the summary by design.
 - **No comments posted:** verify `GITHUB_TOKEN` has `pull-requests: write` and the job has `issues: write`.
 - **Model format warnings:** the action warns when the model ID format does not match the auth mode (Bedrock `us.anthropic.claude-*-v1:0` vs Anthropic `claude-*`).

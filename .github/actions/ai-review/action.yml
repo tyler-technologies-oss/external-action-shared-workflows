@@ -4,12 +4,8 @@ inputs:
   PR_NUMBER:
     description: "Pull request number to review. Required — this action is invoked from a scheduled security scan that discovers the sync PR, so there is no pull_request event context to read the number from."
     required: true
-  AWS_ROLE_ARN:
-    description: "IAM role ARN for Bedrock via OIDC. Provide exactly one of: AWS_ROLE_ARN, BEDROCK_API_KEY, or ANTHROPIC_API_KEY."
-    required: false
-    default: ""
   BEDROCK_API_KEY:
-    description: "Amazon Bedrock API key (bearer token). Alternative to AWS_ROLE_ARN — no OIDC setup required."
+    description: "Amazon Bedrock API key (bearer token). Provide this OR ANTHROPIC_API_KEY — not both."
     required: false
     default: ""
   AWS_REGION:
@@ -17,7 +13,7 @@ inputs:
     required: false
     default: "us-east-1"
   ANTHROPIC_API_KEY:
-    description: "Anthropic API key for direct API access. Provide this OR AWS_ROLE_ARN — not both."
+    description: "Anthropic API key for direct API access. Provide this OR BEDROCK_API_KEY — not both."
     required: false
     default: ""
   MODEL_ID:
@@ -122,7 +118,6 @@ runs:
       id: auth-config
       shell: bash
       env:
-        AWS_ROLE_ARN: ${{ inputs.AWS_ROLE_ARN }}
         BEDROCK_API_KEY: ${{ inputs.BEDROCK_API_KEY }}
         ANTHROPIC_API_KEY: ${{ inputs.ANTHROPIC_API_KEY }}
         MODEL_ID: ${{ inputs.MODEL_ID }}
@@ -156,17 +151,6 @@ runs:
         REVIEW_SCOPE: ${{ inputs.REVIEW_SCOPE }}
         ACTION_PATH: ${{ github.action_path }}
       run: bash "$ACTION_PATH/../../../scripts/ai-review/prefetch-pr-diffs.sh"
-
-    # ================================
-    # ===== AWS Credentials      =====
-    # ================================
-    - name: Configure AWS Credentials
-      if: inputs.ENABLE_REVIEW != '0' && steps.auth-config.outputs.auth_mode == 'bedrock-role'
-      uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
-      with:
-        audience: sts.amazonaws.com
-        role-to-assume: ${{ inputs.AWS_ROLE_ARN }}
-        aws-region: ${{ inputs.AWS_REGION }}
 
     # ================================
     # ===== Supply-Chain Review  =====
