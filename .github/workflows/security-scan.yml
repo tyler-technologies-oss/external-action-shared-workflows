@@ -207,8 +207,33 @@ jobs:
           sha: ${{ steps.sha.outputs.value }}
         continue-on-error: true
 
+  unicode-scan:
+    needs: find-pr
+    if: needs.find-pr.outputs.has_pr == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkout shared-workflows scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: tyler-technologies-oss/external-action-shared-workflows
+          ref: ${{ github.job_workflow_sha }}
+          sparse-checkout: scripts
+          path: .shared-workflows
+
+      - name: Scan added lines for dangerous Unicode
+        env:
+          DEFAULT_BRANCH: ${{ inputs.default_branch }}
+        run: bash .shared-workflows/scripts/security-scan/scan-unicode.sh
+
   report-status:
-    needs: [find-pr, dependency-review, diff-summary, codeql, ai-review]
+    needs: [find-pr, dependency-review, diff-summary, codeql, ai-review, unicode-scan]
     if: always() && needs.find-pr.outputs.has_pr == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -234,6 +259,7 @@ jobs:
           DIFF_SUMMARY_RESULT: ${{ needs.diff-summary.result }}
           CODEQL_RESULT: ${{ needs.codeql.result }}
           AI_REVIEW_RESULT: ${{ needs.ai-review.result }}
+          UNICODE_RESULT: ${{ needs.unicode-scan.result }}
         run: bash .shared-workflows/scripts/security-scan/report-scan-statuses.sh
 
   ai-review:

@@ -61,9 +61,15 @@ post_check "security-scan/ai-review" \
   "$(map_check "${AI_REVIEW_RESULT}")" \
   "AI code review: ${AI_REVIEW_RESULT}"
 
-# CodeQL and AI review are informational -- CodeQL findings appear in the Code
-# Scanning tab and AI review posts inline/summary PR comments; neither gates the
-# aggregate, so model variance or an advisory review never blocks a sync.
+post_check "security-scan/unicode" \
+  "$(map_check "${UNICODE_RESULT}")" \
+  "Unicode scan: ${UNICODE_RESULT}"
+
+# CodeQL, AI review, and the Unicode scan are informational -- CodeQL findings
+# appear in the Code Scanning tab, AI review posts inline/summary PR comments, and
+# the Unicode scan flags Trojan-Source characters in the run log/step summary. None
+# gate the aggregate, so model variance, an advisory review, or a hidden-char
+# finding never blocks a sync on its own.
 if [ "${DEP_REVIEW_RESULT}" = "failure" ] || \
    [ "${DIFF_SUMMARY_RESULT}" = "failure" ]; then
   AGGREGATE="failure"
