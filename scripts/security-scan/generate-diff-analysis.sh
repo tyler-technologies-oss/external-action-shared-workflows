@@ -22,5 +22,15 @@ echo "script_changes=${SCRIPT_CHANGES:-None}" >> "$GITHUB_OUTPUT"
 BINARY_CHANGES=$(git diff --numstat "${BASE_SHA}...${HEAD_SHA}" | grep -E '^-\s+-\s+' | awk '{print $3}' || true)
 echo "binary_changes=${BINARY_CHANGES:-None}" >> "$GITHUB_OUTPUT"
 
+# Committed build output (dist/): the bundle that actually runs for a JS action.
+# It is generated and not human-readable, so a source diff does not reveal what
+# changed here -- call it out for the reviewer. Matches a dist/ path segment.
+DIST_CHANGES=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" | grep -E '(^|/)dist/' || true)
+{
+  echo "dist_changes<<DIST_EOF"
+  echo "${DIST_CHANGES:-None}"
+  echo "DIST_EOF"
+} >> "$GITHUB_OUTPUT"
+
 echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
 echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"

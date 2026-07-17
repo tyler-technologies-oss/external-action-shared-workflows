@@ -18,6 +18,22 @@ module.exports = async ({ github, context }) => {
 \`${process.env.BINARY_CHANGES}\`
 `;
 
+  const distChanges = (process.env.DIST_CHANGES || 'None').trim();
+  body += `
+### Built Bundle (dist/) Changes
+`;
+  if (distChanges && distChanges !== 'None') {
+    body += `> ⚠️ **Committed build output changed.** \`dist/\` holds generated, non-human-readable bundles — the source diff does not show what actually runs. Rebuild from source and confirm it matches before trusting this change.
+
+\`\`\`
+${distChanges}
+\`\`\`
+`;
+  } else {
+    body += `\`None\`
+`;
+  }
+
   if (process.env.HAS_COMPOSITE === 'true') {
     body += `
 ### Composite Action Analysis

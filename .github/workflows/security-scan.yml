@@ -155,6 +155,7 @@ jobs:
           MANIFEST_CHANGES: ${{ steps.diff.outputs.manifest_changes }}
           SCRIPT_CHANGES: ${{ steps.diff.outputs.script_changes }}
           BINARY_CHANGES: ${{ steps.diff.outputs.binary_changes }}
+          DIST_CHANGES: ${{ steps.diff.outputs.dist_changes }}
           HAS_COMPOSITE: ${{ steps.composite.outputs.has_composite_findings }}
           COMPOSITE_USING: ${{ steps.composite.outputs.using_change }}
           COMPOSITE_ADDED_USES: ${{ steps.composite.outputs.added_uses }}
