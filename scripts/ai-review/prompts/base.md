@@ -88,21 +88,30 @@ the diff section for that file? If not, skip the inline comment and put it in th
 
 ## Step 4: Post a summary comment
 
-After reviewing ALL files, post the summary using EXACTLY this command (heredoc form):
+After reviewing ALL files, post the summary as GitHub-flavored Markdown using EXACTLY this
+command form. The single-quoted heredoc delimiter ('REVIEW_BODY') keeps the body literal, so
+backticks and $ are safe — do NOT change the quoting:
 
-gh pr comment __PR_NUMBER__ --body "[your summary here]"
+gh pr comment __PR_NUMBER__ --body "$(cat <<'REVIEW_BODY'
+[your summary here]
+REVIEW_BODY
+)"
 
-CRITICAL formatting rules for the summary body — violating these causes command failures:
-- Do NOT use # characters anywhere (no markdown headers like ## Summary)
-- Do NOT use $ or backticks in the body text
-- Use **bold text** for section titles instead of ## headers
-- Use plain text for numbers and filenames
+CRITICAL formatting rules for the summary body:
+- Wrap EVERY code snippet, identifier, expression, file path, and line reference in backticks
+  or a fenced code block — e.g. `${{ inputs.format }}`, `if [ "$FORMAT" = "json" ]`, `action.yml:25`.
+  This is REQUIRED: any `$...$` left un-backticked is rendered as LaTeX math by GitHub and turns
+  the comment into unreadable stacked characters.
+- You MAY use Markdown: bold, bullet lists, and fenced code blocks. Keep it clean and scannable.
+- Do NOT put the literal word REVIEW_BODY anywhere in the body.
 
-The summary body MUST follow this fixed skeleton exactly:
+The summary body MUST open with exactly this line (fill in the counts):
 
 **__LABEL__ Review** — Files reviewed: N. Assessment: <looks good | suggest a closer look>. Findings: <c> critical, <h> high, <m> medium, <l> low.
 
-Then one line per finding (file and short description). If there are no findings, the body is exactly:
+Then, if there are findings, a Markdown bullet per finding: the location as `path:line` in
+backticks, the severity in bold, and a short description with every code fragment in backticks.
+If there are no findings, the body is exactly:
 
 No findings.
 
