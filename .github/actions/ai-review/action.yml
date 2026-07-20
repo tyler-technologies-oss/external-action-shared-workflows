@@ -1,0 +1,292 @@
+name: 'Code Review'
+description: 'AI-powered supply-chain code review using Claude via Amazon Bedrock or the Anthropic API'
+inputs:
+  PR_NUMBER:
+    description: "Pull request number to review. Required — this action is invoked from a scheduled security scan that discovers the sync PR, so there is no pull_request event context to read the number from."
+    required: true
+  BEDROCK_API_KEY:
+    description: "Amazon Bedrock API key (bearer token). Provide this OR ANTHROPIC_API_KEY — not both."
+    required: false
+    default: ""
+  AWS_REGION:
+    description: "AWS region where the Bedrock endpoint is hosted"
+    required: false
+    default: "us-east-1"
+  ANTHROPIC_API_KEY:
+    description: "Anthropic API key for direct API access. Provide this OR BEDROCK_API_KEY — not both."
+    required: false
+    default: ""
+  MODEL_ID:
+    description: |
+      Model ID to use. Accepts Bedrock format (e.g. us.anthropic.claude-haiku-4-5-20251001-v1:0)
+      or Anthropic API format (e.g. claude-haiku-4-5-20251001). If empty, falls back to BEDROCK_MODEL_ID.
+    required: false
+    default: ""
+  BEDROCK_MODEL_ID:
+    description: "Amazon Bedrock model ID (legacy input — prefer MODEL_ID for new configurations)"
+    required: false
+    default: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  SUPPLYCHAIN_MODEL_ID:
+    description: |
+      Optional stronger model for the security-critical supplychain review only. Must match the
+      active auth mode's format (Bedrock us.anthropic.* or Anthropic claude-*). If empty, the
+      supplychain review uses the same resolved model as every other review type.
+      Recommended: a strong serverless model, e.g. us.anthropic.claude-sonnet-4-6
+    required: false
+    default: ""
+  GITHUB_TOKEN:
+    description: "GitHub token with pull-requests: write and contents: read permissions"
+    required: true
+  MAX_TURNS:
+    description: "Maximum number of agentic turns Claude may take per review type (max 200). Increase for large PRs."
+    required: false
+    default: "100"
+  CUSTOM_REVIEW_INSTRUCTIONS:
+    description: |
+      Additional review rules appended to the prompt. Supports optional [type] section headers
+      to target specific review types (e.g. [supplychain], [bash], [javascript], [docker], [python], [go], [powershell]).
+      Rules under [general] or without any header apply to all enabled types.
+      Example:
+        [supplychain]
+        - Flag any new outbound domain not on our allowlist
+        [bash]
+        - Scripts must use #!/usr/bin/env bash
+        [general]
+        - No hardcoded values without a justifying comment
+    required: false
+    default: ""
+  REVIEW_SCOPE:
+    description: |
+      Comma-separated list of review types to run. Valid types: supplychain, bash, javascript, docker, python, go, powershell, general.
+      Use 'all' to enable every type. Default is 'supplychain'.
+      Example: 'supplychain' or 'supplychain,bash' or 'javascript,docker'
+    required: false
+    default: "supplychain"
+  ENABLE_REVIEW:
+    description: "Set to 0 to disable code review without removing the workflow"
+    required: false
+    default: "1"
+  CONTEXT_FILES:
+    description: |
+      Comma or newline-separated file paths (relative to repo root) whose content is
+      injected into the review prompt as project context. Accepts any text file — use
+      this for review guidelines, architecture docs, coding standards, or any other
+      context that should inform the review. Missing files are skipped with a warning.
+      Each file is capped at 200 lines to keep prompts within token limits.
+      NOTE: The repo's CLAUDE.md is automatically loaded by Claude Code and does NOT
+      need to be listed here.
+      Example: 'docs/review-standards.md'
+              'docs/architecture.md, .github/CODING_GUIDELINES.md'
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Mask sensitive inputs so GitHub's log scrubber redacts them in all output,
+    # even if this action is called directly (not via the reusable workflow).
+    # Must run before any step that references BEDROCK_API_KEY or ANTHROPIC_API_KEY.
+    # ──────────────────────────────────────────────────────────────────────────────
+    - name: Mask Sensitive Inputs
+      if: inputs.ENABLE_REVIEW != '0'
+      shell: bash
+      env:
+        _BEDROCK_KEY: ${{ inputs.BEDROCK_API_KEY }}
+        _ANTHROPIC_KEY: ${{ inputs.ANTHROPIC_API_KEY }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../../../scripts/ai-review/mask-sensitive-inputs.sh"
+
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Build one prompt per enabled review type and set {type}_enabled outputs
+    # ──────────────────────────────────────────────────────────────────────────────
+    - name: Build Review Prompts
+      id: build-prompts
+      shell: bash
+      env:
+        REVIEW_SCOPE: ${{ inputs.REVIEW_SCOPE }}
+        CUSTOM_REVIEW_INSTRUCTIONS: ${{ inputs.CUSTOM_REVIEW_INSTRUCTIONS }}
+        CONTEXT_FILES: ${{ inputs.CONTEXT_FILES }}
+        PR_NUMBER: ${{ inputs.PR_NUMBER }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../../../scripts/ai-review/build-review-prompts.sh"
+
+    # ──────────────────────────────────────────────────────────────────────────────
+    # Detect authentication mode (bedrock vs anthropic) and resolve the model ID
+    # ──────────────────────────────────────────────────────────────────────────────
+    - name: Detect Auth Mode
+      if: inputs.ENABLE_REVIEW != '0'
+      id: auth-config
+      shell: bash
+      env:
+        BEDROCK_API_KEY: ${{ inputs.BEDROCK_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ inputs.ANTHROPIC_API_KEY }}
+        MODEL_ID: ${{ inputs.MODEL_ID }}
+        BEDROCK_MODEL_ID: ${{ inputs.BEDROCK_MODEL_ID }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../../../scripts/ai-review/detect-auth-mode.sh"
+
+    # ================================
+    # ===== Clean Up Old Comments =====
+    # ================================
+    - name: Clean Up Previous Review Comments
+      if: inputs.ENABLE_REVIEW != '0'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ inputs.PR_NUMBER }}
+        REPO: ${{ github.repository }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../../../scripts/ai-review/cleanup-review-comments.sh"
+
+    # ================================
+    # ===== Pre-fetch PR Diffs   =====
+    # ================================
+    - name: Pre-fetch PR Diffs
+      if: inputs.ENABLE_REVIEW != '0'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ inputs.PR_NUMBER }}
+        REPO: ${{ github.repository }}
+        REVIEW_SCOPE: ${{ inputs.REVIEW_SCOPE }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/../../../scripts/ai-review/prefetch-pr-diffs.sh"
+
+    # ================================
+    # ===== Supply-Chain Review  =====
+    # ================================
+    # anthropics/claude-code-action is SHA-pinned per repo convention. The v1.0.90
+    # Bedrock SigV4 regression (issue #1193) is fixed upstream, and this action uses
+    # the bearer-token path (AWS_BEARER_TOKEN_BEDROCK) regardless.
+    - name: Supply-Chain Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.supplychain_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.supplychain_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ inputs.SUPPLYCHAIN_MODEL_ID != '''' && inputs.SUPPLYCHAIN_MODEL_ID || steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== Bash Review          =====
+    # ================================
+    - name: Bash Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.bash_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.bash_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== JavaScript Review    =====
+    # ================================
+    - name: JavaScript Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.javascript_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.javascript_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== Docker Review        =====
+    # ================================
+    - name: Docker Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.docker_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.docker_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== Python Review        =====
+    # ================================
+    - name: Python Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.python_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.python_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== Go Review            =====
+    # ================================
+    - name: Go Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.go_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.go_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== PowerShell Review    =====
+    # ================================
+    - name: PowerShell Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.powershell_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.powershell_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
+
+    # ================================
+    # ===== General Review       =====
+    # ================================
+    - name: General Review
+      if: inputs.ENABLE_REVIEW != '0' && steps.build-prompts.outputs.general_enabled == 'true'
+      uses: anthropics/claude-code-action@700e7f8316990de46bed556429765647af760efc # v1.0.176
+      env:
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+      with:
+        use_bedrock: ${{ steps.auth-config.outputs.use_bedrock }}
+        anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+        github_token: ${{ inputs.GITHUB_TOKEN }}
+        prompt: ${{ steps.build-prompts.outputs.general_prompt }}
+        claude_args: '--max-turns ${{ (inputs.MAX_TURNS > 200) && 200 || inputs.MAX_TURNS }} --model ${{ steps.auth-config.outputs.resolved_model }} --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api repos:*),Read,Glob,Grep"'
+        display_report: "true"
+        show_full_output: "false"
